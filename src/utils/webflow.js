@@ -92,24 +92,21 @@ class WebflowClient {
   }
 
   async createItem(collectionId, itemData, isLive = true) {
-    const endpoint = isLive 
-      ? `/collections/${collectionId}/items/live`
-      : `/collections/${collectionId}/items`;
+    // Webflow API v2 uses query param for live publishing
+    const endpoint = `/collections/${collectionId}/items${isLive ? '?live=true' : ''}`;
     
     return this.request(endpoint, {
       method: 'POST',
       body: JSON.stringify({ 
         isArchived: false,
-        isDraft: !isLive,
+        isDraft: false,
         fieldData: itemData 
       }),
     });
   }
 
   async updateItem(collectionId, itemId, itemData, isLive = true) {
-    const endpoint = isLive
-      ? `/collections/${collectionId}/items/${itemId}/live`
-      : `/collections/${collectionId}/items/${itemId}`;
+    const endpoint = `/collections/${collectionId}/items/${itemId}${isLive ? '?live=true' : ''}`;
     
     return this.request(endpoint, {
       method: 'PATCH',
@@ -118,7 +115,7 @@ class WebflowClient {
   }
 
   async deleteItem(collectionId, itemId) {
-    return this.request(`/collections/${collectionId}/items/${itemId}/live`, {
+    return this.request(`/collections/${collectionId}/items/${itemId}`, {
       method: 'DELETE',
     });
   }
