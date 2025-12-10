@@ -1,0 +1,216 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  @apply bg-pm-dark text-pm-text font-sans antialiased;
+  min-height: 100vh;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-pm-dark;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-pm-border;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-pm-accent;
+}
+
+/* Cropper overrides */
+.cropper-view-box,
+.cropper-face {
+  border-radius: 0;
+}
+
+.cropper-line {
+  background-color: #ce7929 !important;
+}
+
+.cropper-point {
+  background-color: #ce7929 !important;
+}
+
+.cropper-dashed {
+  border-color: #ce7929 !important;
+}
+
+/* Input styles */
+input[type="text"],
+input[type="number"],
+input[type="password"],
+textarea,
+select {
+  @apply bg-pm-dark border border-pm-border px-4 py-2.5 text-pm-text placeholder-pm-text-muted/50 focus:outline-none focus:border-pm-accent transition-colors;
+}
+
+select {
+  @apply cursor-pointer;
+}
+
+/* Button base */
+.btn {
+  @apply px-5 py-2.5 font-medium transition-all duration-200 flex items-center gap-2 justify-center uppercase tracking-wider text-sm;
+}
+
+.btn-primary {
+  @apply bg-pm-accent hover:bg-pm-accent/80 text-pm-dark;
+}
+
+.btn-secondary {
+  @apply bg-transparent border border-pm-border hover:border-pm-accent hover:text-pm-accent text-pm-text;
+}
+
+.btn-success {
+  @apply bg-pm-success hover:bg-pm-success/80 text-white;
+}
+
+.btn-danger {
+  @apply bg-pm-error hover:bg-pm-error/80 text-white;
+}
+
+.btn-ghost {
+  @apply bg-transparent hover:bg-pm-gray-light text-pm-text-muted hover:text-pm-text;
+}
+
+/* Card style */
+.card {
+  @apply bg-pm-gray border border-pm-border p-6;
+}
+
+/* Table styles */
+table {
+  @apply w-full;
+}
+
+th {
+  @apply text-left text-xs uppercase tracking-widest text-pm-accent font-medium pb-3 border-b border-pm-border;
+}
+
+td {
+  @apply py-3 border-b border-pm-border/50 text-sm text-pm-text-muted;
+}
+
+tr:last-child td {
+  @apply border-b-0;
+}
+
+tr:hover td {
+  @apply text-pm-text;
+}
+
+/* Status badges */
+.badge {
+  @apply px-2 py-1 text-xs font-medium uppercase tracking-wider;
+}
+
+.badge-success {
+  @apply bg-pm-success/20 text-pm-success border border-pm-success/30;
+}
+
+.badge-warning {
+  @apply bg-pm-accent/20 text-pm-accent border border-pm-accent/30;
+}
+
+.badge-error {
+  @apply bg-pm-error/20 text-pm-error border border-pm-error/30;
+}
+
+.badge-info {
+  @apply bg-pm-blue/20 text-pm-blue border border-pm-blue/30;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+.scan-line {
+  animation: scan 2s linear infinite;
+}
+
+/* Drag and drop zone */
+.drop-zone {
+  @apply border-2 border-dashed border-pm-border p-8 text-center transition-all duration-200 cursor-pointer;
+}
+
+.drop-zone:hover,
+.drop-zone.active {
+  @apply border-pm-accent bg-pm-accent/5;
+}
+
+/* Tab styles */
+.tab {
+  @apply px-6 py-3 text-pm-text-muted hover:text-pm-text transition-colors relative uppercase tracking-widest text-xs font-medium;
+}
+
+.tab.active {
+  @apply text-pm-accent;
+}
+
+.tab.active::after {
+  content: '';
+  @apply absolute bottom-0 left-0 right-0 h-0.5 bg-pm-accent;
+}
+
+/* Section label */
+.section-label {
+  @apply text-xs uppercase tracking-widest text-pm-accent font-medium border border-pm-accent/30 px-3 py-1 inline-block mb-4;
+}
+
+/* Military-style decorative elements */
+.corner-bracket {
+  position: relative;
+}
+
+.corner-bracket::before,
+.corner-bracket::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-color: #ce7929;
+  border-style: solid;
+}
+
+.corner-bracket::before {
+  top: 0;
+  left: 0;
+  border-width: 2px 0 0 2px;
+}
+
+.corner-bracket::after {
+  bottom: 0;
+  right: 0;
+  border-width: 0 2px 2px 0;
+}
+
+/* Grid pattern background */
+.grid-bg {
+  background-image: 
+    linear-gradient(rgba(206, 121, 41, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(206, 121, 41, 0.03) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
