@@ -91,42 +91,59 @@ class WebflowClient {
     return this.request(`/collections/${collectionId}/items/${itemId}`);
   }
 
-  async createItem(collectionId, itemData, isDraft = false) {
-    return this.request(`/collections/${collectionId}/items${isDraft ? '' : '/live'}`, {
+  async createItem(collectionId, itemData, isLive = true) {
+    const endpoint = isLive 
+      ? `/collections/${collectionId}/items/live`
+      : `/collections/${collectionId}/items`;
+    
+    return this.request(endpoint, {
       method: 'POST',
-      body: JSON.stringify({ fieldData: itemData }),
+      body: JSON.stringify({ 
+        isArchived: false,
+        isDraft: !isLive,
+        fieldData: itemData 
+      }),
     });
   }
 
   async updateItem(collectionId, itemId, itemData, isLive = true) {
-    return this.request(`/collections/${collectionId}/items/${itemId}${isLive ? '/live' : ''}`, {
+    const endpoint = isLive
+      ? `/collections/${collectionId}/items/${itemId}/live`
+      : `/collections/${collectionId}/items/${itemId}`;
+    
+    return this.request(endpoint, {
       method: 'PATCH',
       body: JSON.stringify({ fieldData: itemData }),
     });
   }
 
   async deleteItem(collectionId, itemId) {
-    return this.request(`/collections/${collectionId}/items/${itemId}`, {
+    return this.request(`/collections/${collectionId}/items/${itemId}/live`, {
       method: 'DELETE',
     });
   }
 
-  // Bulk operations
+  // Bulk operations with rate limiting
   async createItems(collectionId, items, isLive = true) {
     const results = [];
     const errors = [];
     
     for (let i = 0; i < items.length; i++) {
       try {
-        const result = await this.createItem(collectionId, items[i], !isLive);
+        const result = await this.createItem(collectionId, items[i], isLive);
         results.push({ success: true, index: i, data: result });
         
-        // Small delay to avoid rate limiting
+        // Webflow rate limit: ~60 requests/min, so 1100ms between requests
         if (i < items.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 150));
+          await new Promise(resolve => setTimeout(resolve, 1100));
         }
       } catch (error) {
         errors.push({ success: false, index: i, error: error.message, item: items[i] });
+        
+        // If rate limited, wait longer and continue
+        if (error.message.includes('Too Many Requests')) {
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
       }
     }
     
