@@ -81,34 +81,42 @@ class WebflowClient {
     const params = new URLSearchParams();
     if (options.limit) params.set('limit', options.limit);
     if (options.offset) params.set('offset', options.offset);
-    
+
     const query = params.toString() ? `?${params.toString()}` : '';
     const data = await this.request(`/collections/${collectionId}/items${query}`);
     return data.items || [];
+  }
+
+  // Fetch all items with pagination (Webflow returns max 100 per page)
+  async getAllItems(collectionId) {
+    const allItems = [];
+    let offset = 0;
+    const limit = 100;
+
+    while (true) {
+      const items = await this.getItems(collectionId, { limit, offset });
+      allItems.push(...items);
+      if (items.length < limit) break;
+      offset += limit;
+      await new Promise(resolve => setTimeout(resolve, 150));
+    }
+
+    return allItems;
   }
 
   async getItem(collectionId, itemId) {
     return this.request(`/collections/${collectionId}/items/${itemId}`);
   }
 
-  async createItem(collectionId, itemData, isLive = true) {
-    // Webflow API v2 uses query param for live publishing
-    const endpoint = `/collections/${collectionId}/items${isLive ? '?live=true' : ''}`;
-    
-    return this.request(endpoint, {
+  async createItem(collectionId, itemData, isDraft = false) {
+    return this.request(`/collections/${collectionId}/items${isDraft ? '' : '/live'}`, {
       method: 'POST',
-      body: JSON.stringify({ 
-        isArchived: false,
-        isDraft: false,
-        fieldData: itemData 
-      }),
+      body: JSON.stringify({ fieldData: itemData }),
     });
   }
 
   async updateItem(collectionId, itemId, itemData, isLive = true) {
-    const endpoint = `/collections/${collectionId}/items/${itemId}${isLive ? '?live=true' : ''}`;
-    
-    return this.request(endpoint, {
+    return this.request(`/collections/${collectionId}/items/${itemId}${isLive ? '/live' : ''}`, {
       method: 'PATCH',
       body: JSON.stringify({ fieldData: itemData }),
     });
@@ -120,31 +128,89 @@ class WebflowClient {
     });
   }
 
-  // Bulk operations with rate limiting
+  // Bulk operations
   async createItems(collectionId, items, isLive = true) {
     const results = [];
     const errors = [];
-    
+
     for (let i = 0; i < items.length; i++) {
       try {
-        const result = await this.createItem(collectionId, items[i], isLive);
-        results.push({ success: true, index: i, data: result });
-        
-        // Webflow rate limit: ~60 requests/min, so 1100ms between requests
+        const result = await this.createItem(collectionId, items[i], !isLive);
+        results.push({ success: true, index: i, data: result, action: 'created' });
+
+        // Small delay to avoid rate limiting
         if (i < items.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1100));
+          await new Promise(resolve => setTimeout(resolve, 150));
         }
       } catch (error) {
         errors.push({ success: false, index: i, error: error.message, item: items[i] });
-        
-        // If rate limited, wait longer and continue
-        if (error.message.includes('Too Many Requests')) {
-          await new Promise(resolve => setTimeout(resolve, 5000));
-        }
       }
     }
-    
+
     return { results, errors, total: items.length };
+  }
+
+  // Upsert: update existing items by ID or slug, create new ones
+  async upsertItems(collectionId, items, isLive = true, onProgress = null) {
+    const results = [];
+    const errors = [];
+
+    // Fetch all existing items to build lookup maps
+    if (onProgress) onProgress({ phase: 'fetching', message: 'Fetching existing items...' });
+    const existingItems = await this.getAllItems(collectionId);
+    const slugToId = {};
+    const idSet = new Set();
+    for (const item of existingItems) {
+      if (item.fieldData?.slug) {
+        slugToId[item.fieldData.slug] = item.id;
+      }
+      idSet.add(item.id);
+    }
+
+    if (onProgress) onProgress({ phase: 'importing', message: `Found ${existingItems.length} existing items. Starting upsert...` });
+
+    for (let i = 0; i < items.length; i++) {
+      try {
+        // Extract id from the item data (not a CMS field, it's the item identifier)
+        const { id: itemId, ...fieldData } = items[i];
+
+        // Determine the existing item ID to update
+        let existingId = null;
+        if (itemId && idSet.has(itemId)) {
+          existingId = itemId;
+        } else if (fieldData.slug && slugToId[fieldData.slug]) {
+          existingId = slugToId[fieldData.slug];
+        }
+
+        let result;
+        let action;
+        if (existingId) {
+          // Update existing item
+          result = await this.updateItem(collectionId, existingId, fieldData, isLive);
+          action = 'updated';
+        } else {
+          // Create new item
+          result = await this.createItem(collectionId, fieldData, !isLive);
+          action = 'created';
+        }
+
+        results.push({ success: true, index: i, data: result, action });
+
+        if (onProgress) onProgress({ phase: 'importing', message: `Processed ${i + 1} of ${items.length}`, current: i + 1, total: items.length });
+
+        // Rate limit delay
+        if (i < items.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      } catch (error) {
+        errors.push({ success: false, index: i, error: error.message, item: items[i] });
+      }
+    }
+
+    const updated = results.filter(r => r.action === 'updated').length;
+    const created = results.filter(r => r.action === 'created').length;
+
+    return { results, errors, total: items.length, updated, created };
   }
 
   // Publish

@@ -17,6 +17,8 @@ function DataImporter({ client, site, collections, isConnected }) {
   const [isImporting, setIsImporting] = useState(false);
   const [importResults, setImportResults] = useState(null);
   const [isDryRun, setIsDryRun] = useState(true);
+  const [isUpdateMode, setIsUpdateMode] = useState(false);
+  const [upsertProgress, setUpsertProgress] = useState(null);
   const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState(null);
 
@@ -124,6 +126,10 @@ function DataImporter({ client, site, collections, isConnected }) {
   const transformData = () => {
     return parsedData.map(row => {
       const transformed = {};
+      // Preserve id for upsert mode (used to match existing items)
+      if (isUpdateMode && row.id) {
+        transformed.id = row.id;
+      }
       Object.entries(fieldMapping).forEach(([source, target]) => {
         if (target && row[source] !== undefined) {
           transformed[target] = row[source];
@@ -133,27 +139,55 @@ function DataImporter({ client, site, collections, isConnected }) {
     });
   };
 
-  // Run import
-  const runImport = async () => {
+  // Run import (dryRunOverride lets the "Run Live" button bypass stale closure)
+  const runImport = async (dryRunOverride) => {
     if (!selectedCollection || !parsedData?.length) return;
+
+    const dryRun = dryRunOverride !== undefined ? dryRunOverride : isDryRun;
 
     setIsImporting(true);
     setError(null);
+    setUpsertProgress(null);
 
     try {
       const transformedData = transformData();
 
-      if (isDryRun) {
+      if (dryRun) {
         // Dry run - just show what would be imported
+        const itemsWithId = transformedData.filter(d => d.id).length;
+        const itemsWithSlug = transformedData.filter(d => d.slug && !d.id).length;
+        const itemsNew = transformedData.length - itemsWithId - itemsWithSlug;
         setImportResults({
           mode: 'dry-run',
           total: transformedData.length,
           preview: transformedData.slice(0, 5),
           success: transformedData.length,
           errors: [],
+          isUpdateMode,
+          itemsWithId,
+          itemsWithSlug,
+          itemsNew,
+        });
+      } else if (isUpdateMode) {
+        // Upsert import - update existing, create new
+        const result = await client.upsertItems(
+          selectedCollection.id,
+          transformedData,
+          true,
+          (progress) => setUpsertProgress(progress)
+        );
+        setImportResults({
+          mode: 'live',
+          total: result.total,
+          success: result.results.length,
+          errors: result.errors,
+          preview: result.results.slice(0, 5).map(r => r.data),
+          updated: result.updated,
+          created: result.created,
+          isUpdateMode: true,
         });
       } else {
-        // Actual import
+        // Create-only import
         const result = await client.createItems(selectedCollection.id, transformedData, true);
         setImportResults({
           mode: 'live',
@@ -161,12 +195,14 @@ function DataImporter({ client, site, collections, isConnected }) {
           success: result.results.length,
           errors: result.errors,
           preview: result.results.slice(0, 5).map(r => r.data),
+          isUpdateMode: false,
         });
       }
     } catch (err) {
       setError(`Import failed: ${err.message}`);
     } finally {
       setIsImporting(false);
+      setUpsertProgress(null);
     }
   };
 
@@ -180,6 +216,8 @@ function DataImporter({ client, site, collections, isConnected }) {
     setCollectionFields([]);
     setFieldMapping({});
     setImportResults(null);
+    setIsUpdateMode(false);
+    setUpsertProgress(null);
     setError(null);
   };
 
@@ -316,6 +354,34 @@ function DataImporter({ client, site, collections, isConnected }) {
             </div>
           </div>
 
+          {/* Import Mode */}
+          {selectedCollection && (
+            <div className="card">
+              <h3 className="text-xs uppercase tracking-widest text-pm-accent mb-4">Import Mode</h3>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setIsUpdateMode(false)}
+                  className={`flex-1 p-4 border text-left ${!isUpdateMode ? 'border-pm-accent bg-pm-accent/10' : 'border-pm-border hover:border-pm-border/60'}`}
+                >
+                  <p className="text-pm-text font-medium mb-1">Create New</p>
+                  <p className="text-pm-text-muted text-xs">Create new CMS items (may create duplicates)</p>
+                </button>
+                <button
+                  onClick={() => setIsUpdateMode(true)}
+                  className={`flex-1 p-4 border text-left ${isUpdateMode ? 'border-pm-accent bg-pm-accent/10' : 'border-pm-border hover:border-pm-border/60'}`}
+                >
+                  <p className="text-pm-text font-medium mb-1">Update Existing</p>
+                  <p className="text-pm-text-muted text-xs">Match by ID or slug — update existing, create only if new</p>
+                </button>
+              </div>
+              {isUpdateMode && (
+                <p className="text-pm-text-muted text-xs mt-3">
+                  Items with an "id" field will be matched by ID. Items without "id" will be matched by slug. Unmatched items will be created as new.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Field Mapping */}
           {selectedCollection && collectionFields.length > 0 && (
             <div className="card">
@@ -363,20 +429,20 @@ function DataImporter({ client, site, collections, isConnected }) {
                     />
                     <span className="text-sm text-pm-text-muted">Dry run (preview only)</span>
                   </label>
-                  <button 
-                    onClick={runImport} 
+                  <button
+                    onClick={runImport}
                     disabled={isImporting || Object.values(fieldMapping).filter(Boolean).length === 0}
                     className="btn btn-primary ml-auto"
                   >
                     {isImporting ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        {isDryRun ? 'Previewing...' : 'Importing...'}
+                        {isDryRun ? 'Previewing...' : (upsertProgress ? upsertProgress.message : 'Importing...')}
                       </>
                     ) : (
                       <>
                         {isDryRun ? <Eye className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                        {isDryRun ? 'Preview Import' : 'Run Import'}
+                        {isDryRun ? 'Preview Import' : (isUpdateMode ? 'Run Upsert' : 'Run Import')}
                       </>
                     )}
                   </button>
@@ -433,29 +499,62 @@ function DataImporter({ client, site, collections, isConnected }) {
               )}
               <div>
                 <h3 className="text-xl text-pm-text">
-                  {importResults.mode === 'dry-run' ? 'Preview Complete' : 'Import Complete'}
+                  {importResults.mode === 'dry-run' ? 'Preview Complete' : (importResults.isUpdateMode ? 'Upsert Complete' : 'Import Complete')}
                 </h3>
                 <p className="text-pm-text-muted text-sm">
-                  {importResults.success} of {importResults.total} items {importResults.mode === 'dry-run' ? 'ready to import' : 'imported'}
+                  {importResults.success} of {importResults.total} items {importResults.mode === 'dry-run' ? 'ready to import' : 'processed'}
                 </p>
               </div>
             </div>
 
+            {/* Dry-run update mode info */}
+            {importResults.mode === 'dry-run' && importResults.isUpdateMode && (
+              <div className="mb-6 p-4 bg-pm-blue/10 border border-pm-blue/30 text-sm text-pm-text">
+                <p className="font-medium mb-1">Update Mode Preview</p>
+                <p className="text-pm-text-muted">
+                  {importResults.itemsWithId} items have an ID (will match by ID) &bull;{' '}
+                  {importResults.itemsWithSlug} items have a slug only (will match by slug) &bull;{' '}
+                  {importResults.itemsNew} items have no ID or slug (will be created as new)
+                </p>
+              </div>
+            )}
+
             {/* Stats */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <div className="bg-pm-dark p-4 border border-pm-border">
-                <p className="text-2xl text-pm-text">{importResults.total}</p>
-                <p className="text-xs uppercase tracking-widest text-pm-text-muted">Total Items</p>
+            {importResults.isUpdateMode && importResults.mode === 'live' ? (
+              <div className="grid grid-cols-4 gap-4 mb-6">
+                <div className="bg-pm-dark p-4 border border-pm-border">
+                  <p className="text-2xl text-pm-text">{importResults.total}</p>
+                  <p className="text-xs uppercase tracking-widest text-pm-text-muted">Total</p>
+                </div>
+                <div className="bg-pm-dark p-4 border border-pm-border">
+                  <p className="text-2xl text-pm-blue">{importResults.updated || 0}</p>
+                  <p className="text-xs uppercase tracking-widest text-pm-text-muted">Updated</p>
+                </div>
+                <div className="bg-pm-dark p-4 border border-pm-border">
+                  <p className="text-2xl text-pm-success">{importResults.created || 0}</p>
+                  <p className="text-xs uppercase tracking-widest text-pm-text-muted">Created</p>
+                </div>
+                <div className="bg-pm-dark p-4 border border-pm-border">
+                  <p className="text-2xl text-pm-error">{importResults.errors.length}</p>
+                  <p className="text-xs uppercase tracking-widest text-pm-text-muted">Errors</p>
+                </div>
               </div>
-              <div className="bg-pm-dark p-4 border border-pm-border">
-                <p className="text-2xl text-pm-success">{importResults.success}</p>
-                <p className="text-xs uppercase tracking-widest text-pm-text-muted">Successful</p>
+            ) : (
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="bg-pm-dark p-4 border border-pm-border">
+                  <p className="text-2xl text-pm-text">{importResults.total}</p>
+                  <p className="text-xs uppercase tracking-widest text-pm-text-muted">Total Items</p>
+                </div>
+                <div className="bg-pm-dark p-4 border border-pm-border">
+                  <p className="text-2xl text-pm-success">{importResults.success}</p>
+                  <p className="text-xs uppercase tracking-widest text-pm-text-muted">Successful</p>
+                </div>
+                <div className="bg-pm-dark p-4 border border-pm-border">
+                  <p className="text-2xl text-pm-error">{importResults.errors.length}</p>
+                  <p className="text-xs uppercase tracking-widest text-pm-text-muted">Errors</p>
+                </div>
               </div>
-              <div className="bg-pm-dark p-4 border border-pm-border">
-                <p className="text-2xl text-pm-error">{importResults.errors.length}</p>
-                <p className="text-xs uppercase tracking-widest text-pm-text-muted">Errors</p>
-              </div>
-            </div>
+            )}
 
             {/* Errors */}
             {importResults.errors.length > 0 && (
@@ -478,12 +577,12 @@ function DataImporter({ client, site, collections, isConnected }) {
                 Start Over
               </button>
               {importResults.mode === 'dry-run' && (
-                <button 
-                  onClick={() => { setIsDryRun(false); runImport(); }}
+                <button
+                  onClick={() => { setIsDryRun(false); setImportResults(null); runImport(false); }}
                   className="btn btn-primary"
                 >
                   <Play className="w-4 h-4" />
-                  Run Live Import
+                  {isUpdateMode ? 'Run Live Upsert' : 'Run Live Import'}
                 </button>
               )}
             </div>
