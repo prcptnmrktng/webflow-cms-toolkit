@@ -185,6 +185,7 @@ function DataImporter({ client, site, collections, isConnected }) {
           updated: result.updated,
           created: result.created,
           isUpdateMode: true,
+          _debug: result._debug,
         });
       } else {
         // Create-only import
@@ -553,6 +554,18 @@ function DataImporter({ client, site, collections, isConnected }) {
                   <p className="text-2xl text-pm-error">{importResults.errors.length}</p>
                   <p className="text-xs uppercase tracking-widest text-pm-text-muted">Errors</p>
                 </div>
+              </div>
+            )}
+
+            {/* Debug info for upsert */}
+            {importResults._debug && (
+              <div className="mb-6 p-4 bg-pm-gray border border-pm-border text-xs font-mono overflow-auto max-h-48">
+                <p className="text-pm-accent mb-2 uppercase tracking-widest text-xs font-sans">Diagnostic Info</p>
+                <p className="text-pm-text-muted">Existing items fetched: <span className="text-pm-text">{importResults._debug.existingCount}</span></p>
+                <p className="text-pm-text-muted mt-1">Existing IDs (first 5): <span className="text-pm-text">{importResults._debug.existingIds?.join(', ') || 'none'}</span></p>
+                <p className="text-pm-text-muted mt-1">Existing slugs (first 5): <span className="text-pm-text">{importResults._debug.existingSlugs?.join(', ') || 'none'}</span></p>
+                <p className="text-pm-text-muted mt-1">Incoming IDs (first 5): <span className="text-pm-text">{importResults._debug.incomingIds?.join(', ') || 'none'}</span></p>
+                <p className="text-pm-text-muted mt-1">Incoming slugs (first 5): <span className="text-pm-text">{importResults._debug.incomingSlugs?.join(', ') || 'none'}</span></p>
               </div>
             )}
 

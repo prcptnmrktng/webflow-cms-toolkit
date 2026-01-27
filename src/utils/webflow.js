@@ -169,6 +169,15 @@ class WebflowClient {
 
     if (onProgress) onProgress({ phase: 'importing', message: `Found ${existingItems.length} existing items. Starting upsert...` });
 
+    // Build diagnostic info for debugging
+    const _debug = {
+      existingCount: existingItems.length,
+      existingIds: existingItems.slice(0, 5).map(i => i.id),
+      existingSlugs: existingItems.slice(0, 5).map(i => i.fieldData?.slug),
+      incomingIds: items.slice(0, 5).map(i => i.id).filter(Boolean),
+      incomingSlugs: items.slice(0, 5).map(i => i.slug).filter(Boolean),
+    };
+
     for (let i = 0; i < items.length; i++) {
       try {
         // Extract id from the item data (not a CMS field, it's the item identifier)
@@ -210,7 +219,7 @@ class WebflowClient {
     const updated = results.filter(r => r.action === 'updated').length;
     const created = results.filter(r => r.action === 'created').length;
 
-    return { results, errors, total: items.length, updated, created };
+    return { results, errors, total: items.length, updated, created, _debug };
   }
 
   // Publish
